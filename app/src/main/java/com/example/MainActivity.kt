@@ -1,7 +1,10 @@
 package com.example
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -38,6 +41,29 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // MediaProjection system capture consent launcher
+                val mediaProjectionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+                        val metrics = resources.displayMetrics
+                        val width = metrics.widthPixels
+                        val height = metrics.heightPixels
+                        val densityDpi = metrics.densityDpi
+
+                        viewModel.onScreenCaptureGranted(
+                            resultCode = result.resultCode,
+                            resultData = result.data!!,
+                            width = width,
+                            height = height,
+                            densityDpi = densityDpi
+                        )
+                    } else {
+                        viewModel.onScreenCaptureDenied()
+                    }
+                }
+
+                // Request runtime permissions on first launch
                 LaunchedEffect(Unit) {
                     val permissionsToRequest = mutableListOf<String>()
                     if (ContextCompat.checkSelfPermission(
@@ -60,6 +86,18 @@ class MainActivity : ComponentActivity() {
 
                     if (permissionsToRequest.isNotEmpty()) {
                         permissionLauncher.launch(permissionsToRequest.toTypedArray())
+                    }
+                }
+
+                // Collect trigger from ViewModel to show Android MediaProjection consent prompt
+                LaunchedEffect(viewModel) {
+                    viewModel.requestScreenCaptureChannel.collect {
+                        val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+                        if (mpManager != null) {
+                            mediaProjectionLauncher.launch(mpManager.createScreenCaptureIntent())
+                        } else {
+                            viewModel.showToast("MediaProjection service not available on this device")
+                        }
                     }
                 }
 

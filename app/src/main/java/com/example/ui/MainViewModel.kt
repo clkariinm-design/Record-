@@ -96,13 +96,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         showToast(if (next) "Floating ball enabled" else "Floating ball hidden")
     }
 
+    val requestScreenCaptureChannel = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     fun requestStartRecording() {
         val currentState = _uiState.value.recordingState
         if (currentState !is RecordingState.Idle) return
 
         val countdownSec = _uiState.value.settings.countdownSeconds
         if (countdownSec <= 0) {
-            startActualRecording()
+            triggerScreenCaptureRequest()
         } else {
             countdownJob?.cancel()
             countdownJob = viewModelScope.launch {
@@ -110,12 +112,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update { it.copy(recordingState = RecordingState.Countdown(i)) }
                     delay(1000L)
                 }
-                startActualRecording()
+                triggerScreenCaptureRequest()
             }
         }
     }
 
-    private fun startActualRecording() {
+    private fun triggerScreenCaptureRequest() {
+        _uiState.update { it.copy(recordingState = RecordingState.Idle, isFloatingMenuExpanded = false) }
+        requestScreenCaptureChannel.tryEmit(Unit)
+    }
+
+    fun onScreenCaptureGranted(
+        resultCode: Int,
+        resultData: android.content.Intent,
+        width: Int,
+        height: Int,
+        densityDpi: Int
+    ) {
+        val settings = _uiState.value.settings
+        val bitrate = when {
+            settings.bitrate.contains("16") -> 16_000_000
+            settings.bitrate.contains("12") -> 12_000_000
+            settings.bitrate.contains("5") -> 5_000_000
+            else -> 8_000_000
+        }
+        val recordAudio = settings.audioSource != AudioSource.MUTE
+
         _uiState.update {
             it.copy(
                 recordingState = RecordingState.Recording(0L, false),
@@ -123,7 +145,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         currentRecordingDurationMs = 0L
-        ScreenRecordService.start(getApplication())
+
+        ScreenRecordService.startWithProjection(
+            context = getApplication(),
+            resultCode = resultCode,
+            resultData = resultData,
+            width = width,
+            height = height,
+            densityDpi = densityDpi,
+            fps = settings.fps.value,
+            bitrate = bitrate,
+            audio = recordAudio
+        )
 
         recordingTimerJob?.cancel()
         recordingTimerJob = viewModelScope.launch {
@@ -142,6 +175,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+        showToast("Screen capture started. Recording outside the app is active.")
+    }
+
+    fun onScreenCaptureDenied() {
+        _uiState.update { it.copy(recordingState = RecordingState.Idle) }
+        showToast("Screen capture permission was not granted.")
     }
 
     fun pauseRecording() {
