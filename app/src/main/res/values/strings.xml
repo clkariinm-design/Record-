@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">XRecorder</string>
+    <string name="recording_notification_title">Screen Recorder Active</string>
+    <string name="recording_notification_desc">Recording your screen. Tap to stop or pause.</string>
+</resources>

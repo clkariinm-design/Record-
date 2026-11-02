@@ -1,0 +1,6 @@
+{
+  "name": "XRecorder",
+  "description": "Screen Recorder and Video Editor with floating controls, HD recording, audio capture, trimmer, and video manager.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
